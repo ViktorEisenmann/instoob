@@ -13,7 +13,7 @@ from .instagram import (
 )
 from .instagram_graph import fetch_reels_official, fetch_reels_unified
 from .state import add_synced_reel, get_synced_shortcodes, load_state, save_state
-from .youtube import get_authenticated_service, upload_video
+from .youtube import assert_expected_channel, get_authenticated_service, upload_video
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +74,11 @@ def run_sync(config: AppConfig) -> int:
         save_state(config.sync.data_dir, state)
         return 0
 
-    # Set up YouTube
+    # Set up YouTube and verify the exact intended channel before writing videos.
     youtube = get_authenticated_service()
+    assert_expected_channel(
+        youtube, os.environ.get("YOUTUBE_EXPECTED_CHANNEL_ID", "").strip()
+    )
 
     # Process each reel
     download_dir = Path(config.sync.download_dir)
