@@ -19,9 +19,16 @@ from .instagram import ReelInfo, InstagramAPIError
 
 logger = logging.getLogger(__name__)
 GRAPH_API = "https://graph.instagram.com/v27.0"
+UNIFIED_GRAPH_API = "https://graph.facebook.com/v26.0"
 
 
-def _get_json(session: requests.Session, url: str, params: dict | None = None) -> dict:
+def _get_json(
+    session: requests.Session,
+    url: str,
+    params: dict | None = None,
+    *,
+    permission_hint: str = "instagram_business_basic",
+) -> dict:
     """Issue an authenticated Graph API request without leaking access tokens in errors."""
     try:
         response = session.get(url, params=params, timeout=25)
@@ -33,7 +40,7 @@ def _get_json(session: requests.Session, url: str, params: dict | None = None) -
         status = response.status_code
         raise InstagramAPIError(
             f"Official Instagram API returned HTTP {status}. "
-            "Check the access token, its expiration, and instagram_business_basic permission."
+            f"Check the token, account assignment, and {permission_hint} permission."
         ) from None
     try:
         data = response.json()
@@ -137,3 +144,105 @@ def fetch_reels_official(
         username,
     )
     return results[:max_count]
+
+
+def fetch_reels_unified(
+    username: str,
+    max_count: int,
+    max_duration: int,
+    already_synced: set[str],
+    since_date: datetime | None,
+    access_token: str,
+    account_id: str,
+) -> list[ReelInfo]:
+    """Read owned Reels through the 2026 Unified Login on graph.facebook.com.
+
+    Unlike Instagram Login, Unified Login uses a portfolio-scoped system-user
+    token plus the Instagram account ID shown in Meta's dashboard. Requires
+    instagram_basic and an assigned Instagram asset. No Facebook Page needed.
+    """
+    if not account_id.isdecimal():
+        raise InstagramAPIError(
+            "IG_ACCOUNT_ID must be the numeric Instagram account ID from "
+            "Meta Unified Login > Generate access tokens."
+        )
+
+    session = requests.Session()
+    session.headers.update({
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": "LIMIAR-LAB-Instoob/1.0",
+    })
+
+    profile = _get_json(
+        session, f"{UNIFIED_GRAPH_API}/{account_id}",
+        {"fields": "id,username"}, permission_hint="instagram_basic",
+    )
+    actual_username = str(profile.get("username", "")).lower().lstrip("@")
+    if actual_username != username.lower().lstrip("@"):
+        raise InstagramAPIError(
+            "Unified Login token/account ID does not resolve to @"
+            + username + ". Check the IG_ACCOUNT_ID and Instagram asset access."
+        )
+
+    url = f"{UNIFIED_GRAPH_API}/{account_id}/media"
+    params = {
+        "fields": "id,caption,media_type,media_product_type,media_url,permalink,timestamp,shortcode",
+        "limit": 50,
+    }
+    reels: list[ReelInfo] = []
+    pages = 0
+    while url and pages < 5:
+        if urlparse(url).scheme != "https" or urlparse(url).hostname != "graph.facebook.com":
+            raise InstagramAPIError("Unexpected pagination URL from Meta Graph API")
+        data = _get_json(session, url, params, permission_hint="instagram_basic")
+        pages += 1
+        old_page_reached = False
+        for media in data.get("data", []):
+            if not isinstance(media, dict):
+                continue
+            permalink = str(media.get("permalink") or "")
+            media_product_type = str(media.get("media_product_type") or "").upper()
+            if media.get("media_type") != "VIDEO":
+                continue
+            if media_product_type != "REELS" and "/reel/" not in permalink.lower():
+                continue
+
+            try:
+                posted = datetime.fromisoformat(str(media["timestamp"]).replace("Z", "+00:00"))
+                if posted.tzinfo is None:
+                    posted = posted.replace(tzinfo=timezone.utc)
+            except (KeyError, ValueError, TypeError):
+                logger.warning("Skipping Reel without valid timestamp")
+                continue
+            if since_date and posted < since_date:
+                old_page_reached = True
+                continue
+
+            shortcode = str(media.get("shortcode") or "")
+            if not shortcode:
+                parts = [p for p in urlparse(permalink).path.split("/") if p]
+                if len(parts) >= 2 and parts[0].lower() == "reel":
+                    shortcode = parts[1]
+            if not shortcode or shortcode in already_synced:
+                continue
+
+            caption = str(media.get("caption") or "")
+            video_url = str(media.get("media_url") or "")
+            hashtags = [w.lstrip("#").strip(".,!?") for w in caption.split() if w.startswith("#")]
+            reels.append(ReelInfo(
+                shortcode=shortcode,
+                caption=caption,
+                hashtags=hashtags,
+                video_url=video_url,
+                duration=0.0,
+                date=posted,
+            ))
+
+        if old_page_reached:
+            break
+        url = data.get("paging", {}).get("next")
+        params = None
+
+    reels.sort(key=lambda reel: reel.date)
+    logger.info("Unified Login found %s eligible Reels for @%s", len(reels), username)
+    return reels[:max_count]
