@@ -29,6 +29,42 @@ def get_authenticated_service():
     return build("youtube", "v3", credentials=credentials)
 
 
+def assert_expected_channel(youtube, expected_channel_id: str) -> None:
+    """Fail closed before any upload unless OAuth targets the approved channel."""
+    if not expected_channel_id or not expected_channel_id.startswith("UC"):
+        raise RuntimeError(
+            "Upload paused: set Actions variable YOUTUBE_EXPECTED_CHANNEL_ID "
+            "to the verified UC... channel ID after running the read-only diagnosis."
+        )
+    try:
+        result = youtube.channels().list(part="snippet", mine=True).execute()
+    except HttpError as exc:
+        raise RuntimeError(
+            f"Cannot verify authorized YouTube channel (HTTP {exc.resp.status}); upload paused"
+        ) from None
+
+    channels = result.get("items", [])
+    channel_ids = {ch.get("id") for ch in channels}
+    if expected_channel_id not in channel_ids:
+        names = ", ".join(
+            f"{ch.get('snippet', {}).get('title', 'unknown')} ({ch.get('id', 'unknown')})"
+            for ch in channels
+        ) or "none returned"
+        raise RuntimeError(
+            "Upload blocked: OAuth credentials authorize a different YouTube channel. "
+            f"Authorized channel(s): {names}. Expected ID: {expected_channel_id}. "
+            "Reauthorize setup_youtube.py for the correct channel if needed."
+        )
+
+    for channel in channels:
+        if channel.get("id") == expected_channel_id:
+            logger.info(
+                "Verified YouTube upload destination: %s (%s)",
+                channel.get("snippet", {}).get("title", "unknown"),
+                expected_channel_id,
+            )
+
+
 def upload_video(
     youtube,
     video_path: Path,
