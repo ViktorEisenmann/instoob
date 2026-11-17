@@ -27,6 +27,7 @@ jobs:
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           IG_SESSION_ID: ${{ secrets.IG_SESSION_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_ACCOUNT_ID: ${{ vars.IG_ACCOUNT_ID }}
         run: |
           for name in YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
             if [ -z "${!name}" ]; then
@@ -36,6 +37,10 @@ jobs:
           done
           if [ -z "$IG_ACCESS_TOKEN" ] && [ -z "$IG_SESSION_ID" ]; then
             echo "::error::Missing Instagram credential (IG_ACCESS_TOKEN or IG_SESSION_ID)"
+            exit 1
+          fi
+          if [ -n "$IG_ACCESS_TOKEN" ] && [ -z "$IG_ACCOUNT_ID" ]; then
+            echo "::error::Missing Actions variable IG_ACCOUNT_ID for Meta Unified Login"
             exit 1
           fi
 
@@ -60,6 +65,7 @@ jobs:
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           IG_SESSION_ID: ${{ secrets.IG_SESSION_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_ACCOUNT_ID: ${{ vars.IG_ACCOUNT_ID }}
         run: python main.py sync
 
       - name: Commit sync state
