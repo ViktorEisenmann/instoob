@@ -1,7 +1,9 @@
 """Main sync orchestrator: Instagram Reels -> YouTube Shorts."""
 
 import logging
+import os
 import shutil
+import subprocess
 from pathlib import Path
 
 from .config import AppConfig
@@ -9,6 +11,7 @@ from .instagram import (
     download_reel,
     fetch_reels,
 )
+from .instagram_graph import fetch_reels_official
 from .state import add_synced_reel, get_synced_shortcodes, load_state, save_state
 from .youtube import get_authenticated_service, upload_video
 
@@ -31,14 +34,27 @@ def run_sync(config: AppConfig) -> int:
     synced = get_synced_shortcodes(state)
     logger.info(f"Already synced: {len(synced)} reels")
 
-    # Fetch new reels (no login required)
-    reels = fetch_reels(
-        username=username,
-        max_count=config.instagram.max_reels_per_run,
-        max_duration=config.instagram.max_duration,
-        already_synced=synced,
-        since_date=config.instagram.since_date,
-    )
+    # Prefer the official, professional-account API when its token is configured.
+    official_token = os.environ.get("IG_ACCESS_TOKEN", "").strip()
+    if official_token:
+        logger.info("Using official Instagram API with Instagram Login")
+        reels = fetch_reels_official(
+            username=username,
+            max_count=config.instagram.max_reels_per_run,
+            max_duration=config.instagram.max_duration,
+            already_synced=synced,
+            since_date=config.instagram.since_date,
+            access_token=official_token,
+        )
+    else:
+        logger.info("Using legacy unofficial Instagram API (may return HTTP 429)")
+        reels = fetch_reels(
+            username=username,
+            max_count=config.instagram.max_reels_per_run,
+            max_duration=config.instagram.max_duration,
+            already_synced=synced,
+            since_date=config.instagram.since_date,
+        )
     logger.info(f"Found {len(reels)} new reels to sync")
 
     if not reels:
@@ -53,6 +69,7 @@ def run_sync(config: AppConfig) -> int:
     download_dir = Path(config.sync.download_dir)
     download_dir.mkdir(parents=True, exist_ok=True)
     synced_count = 0
+    failed_count = 0
 
     for reel in reels:
         try:
@@ -60,6 +77,28 @@ def run_sync(config: AppConfig) -> int:
 
             # Download
             video_path = download_reel(reel, download_dir)
+
+            # The official media API does not expose duration; check the video after download.
+            if config.instagram.max_duration > 0 and reel.duration <= 0:
+                try:
+                    probe = subprocess.run(
+                        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                         "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
+                        capture_output=True, text=True, check=True, timeout=30,
+                    )
+                    duration = float(probe.stdout.strip())
+                except (FileNotFoundError, subprocess.CalledProcessError, ValueError,
+                        subprocess.TimeoutExpired) as exc:
+                    raise RuntimeError(
+                        "Could not verify downloaded video duration with ffprobe"
+                    ) from exc
+                if duration > config.instagram.max_duration:
+                    logger.info(
+                        "Skipping %s: %.1f seconds exceeds %s-second limit",
+                        reel.shortcode, duration, config.instagram.max_duration,
+                    )
+                    video_path.unlink(missing_ok=True)
+                    continue
 
             # Build metadata
             title = _build_title(reel.caption, config.youtube)
@@ -87,6 +126,7 @@ def run_sync(config: AppConfig) -> int:
             video_path.unlink(missing_ok=True)
 
         except Exception:
+            failed_count += 1
             logger.exception(f"Failed to sync reel {reel.shortcode}")
 
     # Save state
@@ -97,6 +137,8 @@ def run_sync(config: AppConfig) -> int:
         shutil.rmtree(download_dir, ignore_errors=True)
 
     logger.info(f"Sync complete: {synced_count}/{len(reels)} reels synced")
+    if failed_count:
+        raise RuntimeError(f"Sync failed for {failed_count} Reel(s); inspect logs above")
     return synced_count
 
 
