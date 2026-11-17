@@ -1,0 +1,31 @@
+# LIMIAR LAB · Instoob
+
+Fork of [sunithvs/instoob](https://github.com/sunithvs/instoob) to mirror Reels from [@vik_limiarlab](https://www.instagram.com/vik_limiarlab/) to YouTube Shorts.
+
+## Safety defaults
+- Uploads are **private** until reviewed (see `config.yml`).
+- At most **one** Reel per run, maximum **180 seconds**.
+- Only Reels dated **2026-11-01** or later are eligible.
+- The scheduled workflow runs every 6 hours **only when** the repository Actions variable `SYNC_ENABLED` equals `true`. It is intentionally not set by this setup.
+- History in `data/synced.json` was reset to remove upstream sample videos.
+- **Caution:** Instagram access uses an unofficial private endpoint and a sensitive session cookie. It may break or prompt a security challenge. Never commit cookies or OAuth tokens.
+- **Caution:** music licensed inside Instagram is not necessarily licensed for YouTube.
+
+## Finish setup
+
+1. Create a Google Cloud project and enable **YouTube Data API v3**.
+2. Configure an OAuth consent screen and create a **Desktop app** OAuth client.
+3. Download the client JSON **locally** as `client_secrets.json` (never commit it).
+4. Run `pip install -r requirements.txt` then `python setup_youtube.py` locally and sign into the Google account for the correct YouTube channel.
+5. Add these repository **Actions secrets** at [Settings](https://github.com/ViktorEisenmann/instoob/settings/secrets/actions): `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN`, and `IG_SESSION_ID`.
+6. For Instagram, obtain your own `sessionid` in a trusted browser session (the upstream `setup_instagram.py` describes where). Paste it **only** into GitHub Actions secrets. It grants account access, so do not share it in chat or logs.
+7. In **Settings → Secrets and variables → Actions → Variables**, create `SYNC_ENABLED` with value `true` **only when ready to test**.
+8. In **Actions → LIMIAR LAB - Reels to Shorts → Run workflow**, trigger a manual test. Verify the YouTube upload is private and metadata is correct.
+9. Once the private test passes, keep `SYNC_ENABLED=true` for scheduled private uploads. Change `youtube.privacy_status` to `public` later only if you explicitly want public auto-posting.
+
+**OAuth warning:** Google OAuth apps in External/Testing mode may issue refresh tokens that expire after seven days. Confirm the consent-screen publishing status and any verification requirements.
+
+**Note:** This is a fork of an independent open-source tool, not an official Meta integration. Scheduled GitHub Actions jobs can run late or occasionally be skipped.
+
+## Source
+The original project README contains general setup and troubleshooting: https://github.com/sunithvs/instoob
