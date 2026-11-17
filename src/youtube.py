@@ -6,6 +6,7 @@ import random
 import time
 from pathlib import Path
 
+from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -41,6 +42,17 @@ def assert_expected_channel(youtube, expected_channel_id: str) -> None:
         )
     try:
         result = youtube.channels().list(part="snippet", mine=True).execute()
+    except RefreshError as exc:
+        if "invalid_scope" in str(exc):
+            raise RuntimeError(
+                "Upload blocked: YouTube OAuth token lacks the required permissions. "
+                "Download the latest setup_youtube.py, run it again, and authorize "
+                "both youtube.upload and youtube.readonly for the intended channel."
+            ) from None
+        raise RuntimeError(
+            "Upload blocked: YouTube OAuth token could not be refreshed; "
+            "reauthorize setup_youtube.py for the intended channel."
+        ) from None
     except HttpError as exc:
         raise RuntimeError(
             f"Cannot verify authorized YouTube channel (HTTP {exc.resp.status}); upload paused"
