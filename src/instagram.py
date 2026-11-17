@@ -21,6 +21,12 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+
+class InstagramAPIError(RuntimeError):
+    """Instagram discovery failed; do not misreport this as no new Reels."""
+
+
+
 # Instagram's web app ID (public, used by the web frontend)
 IG_APP_ID = "936619743392459"
 
@@ -83,16 +89,30 @@ def _get_session_id() -> str | None:
     return None
 
 
-def _get_user_id(session: requests.Session, username: str) -> str | None:
-    """Get user ID from username."""
+def _get_user_id(session: requests.Session, username: str) -> str:
+    """Resolve Instagram user ID, explicitly failing when Instagram rejects discovery."""
     url = f"https://i.instagram.com/api/v1/users/web_profile_info/?username={username}"
     try:
-        r = session.get(url, timeout=15)
-        r.raise_for_status()
-        return r.json()["data"]["user"]["id"]
-    except Exception:
-        logger.exception(f"Failed to get user ID for @{username}")
-        return None
+        response = session.get(url, timeout=15)
+        response.raise_for_status()
+        user_id = response.json()["data"]["user"]["id"]
+        if not user_id:
+            raise InstagramAPIError(f"Instagram returned no user ID for @{username}")
+        return str(user_id)
+    except requests.exceptions.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        if status == 429:
+            raise InstagramAPIError(
+                "Instagram returned HTTP 429 for profile lookup. This legacy, unofficial "
+                "endpoint is frequently blocked (including from GitHub Actions). "
+                "No Reels were fetched; do not repeatedly rerun the workflow. "
+                "Consider the official Instagram API for a reliable integration."
+            ) from exc
+        raise InstagramAPIError(f"Instagram profile lookup failed (HTTP {status})") from exc
+    except requests.exceptions.RequestException as exc:
+        raise InstagramAPIError("Instagram profile lookup failed due to a network error") from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        raise InstagramAPIError("Instagram profile lookup returned an unexpected response") from exc
 
 
 def fetch_reels(
@@ -112,8 +132,6 @@ def fetch_reels(
 
     # Get user ID
     user_id = _get_user_id(session, username)
-    if not user_id:
-        return []
 
     # Fetch reels via clips/user endpoint
     reels = []
@@ -133,15 +151,14 @@ def fetch_reels(
                 timeout=15,
             )
             r.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            if e.response and e.response.status_code == 429:
-                logger.warning("Rate limited by Instagram. Try again later.")
-            else:
-                logger.error(f"Instagram API error: {e}")
-            break
-        except Exception:
-            logger.exception("Failed to fetch reels")
-            break
+        except requests.exceptions.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else "unknown"
+            raise InstagramAPIError(
+                f"Instagram Reels endpoint rejected the request (HTTP {status}). "
+                "No successful Reel discovery was completed."
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            raise InstagramAPIError("Instagram Reels endpoint could not be reached") from exc
 
         result = r.json()
         items = result.get("items", [])
