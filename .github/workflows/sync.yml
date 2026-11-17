@@ -14,8 +14,9 @@ concurrency:
 
 jobs:
   sync:
-    # Explicit activation prevents scheduled uploads until credentials and test are ready.
-    if: ${{ vars.SYNC_ENABLED == 'true' }}
+    # Manual runs are allowed for the first private upload test.
+    # Scheduled runs stay disabled until SYNC_ENABLED=true is set in Actions variables.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.SYNC_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
