@@ -54,3 +54,49 @@ que as credenciais OAuth autorizam **outro canal/Brand Account**.
   Repository secret e repita o diagnóstico.
 - Deixe `SYNC_ENABLED` como `false` ou ausente enquanto o destino
   estiver em investigação.
+
+## Canal de destino correto (17/11/2026)
+
+O primeiro upload `uShJDMJb-zc` foi enviado a um **canal diferente** do
+LIMIAR LAB. O usuário confirmou o problema no YouTube. O registro do Reel
+`DfmSAZtIfk0` foi removido de `data/synced.json` para permitir novo upload
+no canal correto, mas nenhum novo upload foi executado.
+
+**Procedimento no Windows:**
+
+1. No YouTube, selecione o canal LIMIAR LAB, depois abra
+   https://www.youtube.com/account_advanced e copie o ID de canal que começa por `UC`.
+2. Baixe a versão mais recente do fork (não use a pasta antiga sem atualização):
+   https://github.com/ViktorEisenmann/instoob/archive/refs/heads/main.zip
+3. Copie seu `client_secrets.json` privado para a pasta `instoob-main`.
+4. Abra o PowerShell nessa pasta e execute:
+
+   ```powershell
+   py -m venv .venv
+   .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt
+   .\\.venv\\Scripts\\python.exe setup_youtube.py
+   ```
+
+5. Cole o ID do **canal LIMIAR LAB** no terminal.
+6. Ao abrir o Google, selecione o canal LIMIAR LAB no seletor da conta/canal.
+   A nova autorização solicita `youtube.upload` e `youtube.readonly`,
+   pois precisa conferir o canal antes do upload.
+7. O programa interrompe com segurança se o ID do canal autenticado for
+   diferente. Só se corresponder ele mostra `YOUTUBE_REFRESH_TOKEN`.
+8. Atualize **Repository secret** `YOUTUBE_REFRESH_TOKEN` no GitHub.
+   Se o cliente Google Cloud for o mesmo, `YOUTUBE_CLIENT_ID` e
+   `YOUTUBE_CLIENT_SECRET` não precisam mudar.
+9. Crie **Repository variable** `YOUTUBE_EXPECTED_CHANNEL_ID` com o ID
+   correto. Não confunda com `IG_ACCOUNT_ID`.
+10. Mantenha `SYNC_ENABLED` ausente ou `false` e execute o sync
+    manualmente. Confira o novo Short privado no Studio do LIMIAR LAB.
+11. Depois, remova manualmente o vídeo privado do canal incorreto, se desejar.
+
+Se o Google não apresentar o canal correto na seleção, consulte as
+instruções oficiais para configurar o canal padrão quando aplicativos de
+terceiros não oferecem o seletor:
+https://support.google.com/youtube/answer/3046478
+
+**Segurança:** nunca envie o JSON, a senha nem os tokens na conversa;
+não suba `client_secrets.json` ao GitHub. Somente o ID público do canal
+pode ser compartilhado normalmente.
