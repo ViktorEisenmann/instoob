@@ -32,3 +32,25 @@ Fork of [sunithvs/instoob](https://github.com/sunithvs/instoob) to mirror Reels 
 
 ## Source
 The original project README contains general setup and troubleshooting: https://github.com/sunithvs/instoob
+
+## Diagnóstico de canal YouTube (17/11/2026)
+
+O upload de teste retornou `uShJDMJb-zc`, mas o vídeo não apareceu no
+YouTube Studio do canal que o usuário estava consultando. Isso pode indicar
+que as credenciais OAuth autorizam **outro canal/Brand Account**.
+
+- Abra o workflow manual, **somente leitura**:
+  https://github.com/ViktorEisenmann/instoob/actions/workflows/diagnose-youtube.yml
+- Clique em **Run workflow** (branch `main`).
+- Nos logs de **Read YouTube channel and uploaded video metadata**, confira:
+  `OAuth channel`, `Owner channel`, `Privacy`, e `Channel Studio URL`.
+- O diagnóstico não publica nem altera vídeos.
+- Para futuros uploads, o sync foi protegido por
+  **Actions variable** `YOUTUBE_EXPECTED_CHANNEL_ID`: sem o ID de canal
+  `UC...` verificado, **nenhum novo vídeo é enviado**.
+- Se o canal autorizado não é o LIMIAR LAB, rode novamente
+  `setup_youtube.py` escolhendo explicitamente o canal certo no
+  seletor do Google/YouTube, atualize o `YOUTUBE_REFRESH_TOKEN` como
+  Repository secret e repita o diagnóstico.
+- Deixe `SYNC_ENABLED` como `false` ou ausente enquanto o destino
+  estiver em investigação.
