@@ -11,7 +11,7 @@ from .instagram import (
     download_reel,
     fetch_reels,
 )
-from .instagram_graph import fetch_reels_official
+from .instagram_graph import fetch_reels_official, fetch_reels_unified
 from .state import add_synced_reel, get_synced_shortcodes, load_state, save_state
 from .youtube import get_authenticated_service, upload_video
 
@@ -36,8 +36,20 @@ def run_sync(config: AppConfig) -> int:
 
     # Prefer the official, professional-account API when its token is configured.
     official_token = os.environ.get("IG_ACCESS_TOKEN", "").strip()
-    if official_token:
-        logger.info("Using official Instagram API with Instagram Login")
+    unified_account_id = os.environ.get("IG_ACCOUNT_ID", "").strip()
+    if official_token and unified_account_id:
+        logger.info("Using official Meta API with Unified Login")
+        reels = fetch_reels_unified(
+            username=username,
+            max_count=config.instagram.max_reels_per_run,
+            max_duration=config.instagram.max_duration,
+            already_synced=synced,
+            since_date=config.instagram.since_date,
+            access_token=official_token,
+            account_id=unified_account_id,
+        )
+    elif official_token:
+        logger.info("Using official Instagram API with legacy Instagram Login")
         reels = fetch_reels_official(
             username=username,
             max_count=config.instagram.max_reels_per_run,
