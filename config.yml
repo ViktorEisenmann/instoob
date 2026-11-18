@@ -1,7 +1,7 @@
 # LIMIAR LAB · Instagram Reels → YouTube Shorts
 instagram:
   username: "vik_limiarlab"
-  max_reels_per_run: 1
+  max_reels_per_run: 5  # Process backlog and new Reels; synced.json prevents duplicates
   max_duration: 180
   since_date: "2026-11-01"
 
